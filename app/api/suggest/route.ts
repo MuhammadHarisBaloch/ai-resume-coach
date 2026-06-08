@@ -33,18 +33,34 @@ const FRIENDLY_PDF_ERROR =
 // Next.js maps the exported function name to the HTTP method.
 // So `export async function POST` handles POST requests to /api/suggest.
 export async function POST(req: Request) {
-  // --- 0. Require a logged-in user (BACKEND enforcement) ---
-  // auth() reads the session cookie and looks up the session in the database,
-  // giving us the TRUSTED user id. We do this first so unauthenticated requests
-  // are rejected before any work (or any Gemini call). 401 = "Unauthorized".
-  // This is the real lock: even a direct curl with no cookie is stopped here.
-  const session = await auth();
-  if (!session?.user?.id) {
-    return Response.json(
-      { error: "You must be signed in to do this." },
-      { status: 401 }
-    );
-  }
+  // Everything is wrapped in a try/catch so that ANY unexpected error is
+  // logged readably (message + stack) in Vercel's function logs, instead of
+  // surfacing only as "FUNCTION_INVOCATION_FAILED". (TEMP debugging aid.)
+  try {
+    // --- TEMP DIAGNOSTICS: confirm env vars reached the function in prod ---
+    // We log only presence + length for secrets (never the value). AUTH_URL is
+    // your PUBLIC site URL (not a secret), so we log it fully — a malformed
+    // AUTH_URL (e.g. missing "https://") makes Auth.js throw "Invalid URL".
+    console.log("[/api/suggest] env check:", {
+      GEMINI_API_KEY: process.env.GEMINI_API_KEY
+        ? `present (length ${process.env.GEMINI_API_KEY.length})`
+        : "MISSING",
+      AUTH_URL: process.env.AUTH_URL ?? "MISSING",
+      AUTH_SECRET: process.env.AUTH_SECRET ? "present" : "MISSING",
+      DATABASE_URL: process.env.DATABASE_URL ? "present" : "MISSING",
+    });
+
+    // --- 0. Require a logged-in user (BACKEND enforcement) ---
+    // auth() reads the session cookie and looks up the session in the database.
+    // NOTE: auth() also builds URLs from AUTH_URL — if AUTH_URL is malformed,
+    // this is what throws "TypeError: Invalid URL" (now caught below).
+    const session = await auth();
+    if (!session?.user?.id) {
+      return Response.json(
+        { error: "You must be signed in to do this." },
+        { status: 401 }
+      );
+    }
 
   // --- 1. Read the multipart form (text fields AND an optional file) ---
   // The frontend now sends FormData (so it can include a file), so we use
@@ -229,5 +245,21 @@ Use strong action verbs and quantify impact where possible. Provide 4-6 bullets 
 
   // --- 9. Send the clean result back to the frontend ---
   // 200 OK with the parsed JSON. The browser's fetch() will receive this.
-  return Response.json(result);
+    return Response.json(result);
+  } catch (err) {
+    // CATCH-ALL: any unexpected throw lands here — e.g. auth() "Invalid URL"
+    // from a bad AUTH_URL, a DB/connection failure, or a native-module crash.
+    // We log the FULL message + stack so it's readable in Vercel's logs, and
+    // (temporarily) return the message to the client to speed up debugging.
+    const e = err as Error;
+    console.error("[/api/suggest] UNHANDLED ERROR:", e?.name, "-", e?.message);
+    console.error("[/api/suggest] STACK:", e?.stack);
+    return Response.json(
+      {
+        error: "Server error — check the function logs.",
+        detail: e?.message ?? String(err), // TEMP: remove after debugging
+      },
+      { status: 500 }
+    );
+  }
 }
