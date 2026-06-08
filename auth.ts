@@ -15,6 +15,13 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/app/lib/prisma";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  // Trust the host header from the deployment platform. On Vercel (and other
+  // hosts), Auth.js must know the site's own URL to build callback/redirect
+  // URLs. With trustHost it derives that from the incoming request's host
+  // header instead of requiring AUTH_URL — which fixes the production
+  // "TypeError: Invalid URL" crash. (Locally it's harmless.)
+  trustHost: true,
+
   // The adapter tells Auth.js to store users/accounts/sessions in our database
   // (via Prisma). This is what makes login persist and what creates the
   // User/Session rows you can see in the database.
