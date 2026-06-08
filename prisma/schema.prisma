@@ -1,0 +1,86 @@
+// prisma/schema.prisma
+//
+// This is the single source of truth for our database. Prisma reads it to:
+//   1. generate a typed client (so `prisma.analysis.create(...)` is type-checked), and
+//   2. create migrations (SQL that builds/updates the real tables to match this file).
+
+// The "client" Prisma generates from this schema. We import it in our code
+// as `@prisma/client`.
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Which database we're talking to, and how to connect.
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled connection — used by the running app
+  directUrl = env("DIRECT_URL")   // direct connection — used by `prisma migrate`
+}
+
+// One table. Each row = one saved AI analysis, owned by one user.
+model Analysis {
+  id         String   @id @default(cuid()) // unique id, auto-generated
+  createdAt  DateTime @default(now())       // timestamp set automatically on insert
+  jobTitle   String                         // the target job title the user entered
+  resumeText String                         // the resume input (pasted text or PDF-extracted)
+  result     Json                           // the AI Suggestions object: { summary, bullets, keywords }
+
+  // Ownership: which user this analysis belongs to.
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// Auth.js (NextAuth) tables — the standard shapes the Prisma adapter expects.
+// These store who is logged in and how. We don't write to them directly;
+// Auth.js manages them for us.
+// ---------------------------------------------------------------------------
+
+// One row per person who has signed in.
+model User {
+  id            String     @id @default(cuid())
+  name          String?
+  email         String?    @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  analyses      Analysis[] // all analyses this user owns
+}
+
+// Links a User to a provider login (e.g. their Google account).
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+// One row per active login session (the server-side "memory" of being logged in).
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Used for email-link sign-in (unused by us, but the adapter expects the table).
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}

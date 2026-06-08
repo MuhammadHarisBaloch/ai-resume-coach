@@ -1,65 +1,79 @@
-import Image from "next/image";
+// app/page.tsx
+//
+// The home page is now a SERVER Component (no "use client"): it runs on the
+// server, so it can read the session with auth() and decide what to render.
+//   - signed in  → show the interactive <CoachForm /> (a Client Component)
+//   - signed out → show a prompt to sign in
+//
+// This "server gate wrapping a client island" is a core App Router pattern.
+// NOTE: this gate is for UX. The REAL protection is the 401 check inside
+// app/api/suggest/route.ts — even if someone bypassed this page, the API
+// refuses to do anything without a valid session.
 
-export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+import { auth, signIn } from "@/auth";
+import CoachForm from "@/app/components/coach-form";
+import SubmitButton from "@/app/components/submit-button";
+
+export default async function Home() {
+  const session = await auth();
+
+  if (!session?.user) {
+    return (
+      <main className="relative mx-auto flex w-full max-w-3xl flex-col items-center overflow-hidden px-4 py-20 text-center sm:py-28">
+        {/* Soft gradient accent behind the hero (decorative, non-interactive). */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-72 bg-gradient-to-b from-blue-500/15 via-indigo-500/5 to-transparent blur-2xl dark:from-blue-400/15 dark:via-indigo-400/10"
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+
+        <h1 className="animate-fade-in-up text-4xl font-bold tracking-tight sm:text-5xl">
+          AI Resume Coach
+        </h1>
+
+        <p
+          className="animate-fade-in-up mx-auto mt-4 max-w-md text-base leading-relaxed text-gray-600 dark:text-gray-400"
+          style={{ animationDelay: "120ms" }}
+        >
+          Tailor your resume to any job in seconds. Sign in to get AI-powered
+          suggestions — saved privately to your account.
+        </p>
+
+        {/* Small feature line for a more engaging hero. */}
+        <div
+          className="animate-fade-in-up mt-5 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs font-medium text-gray-500 dark:text-gray-400"
+          style={{ animationDelay: "200ms" }}
+        >
+          <span>Stronger summary</span>
+          <span aria-hidden="true" className="text-gray-300 dark:text-gray-600">
+            ·
+          </span>
+          <span>Better bullet points</span>
+          <span aria-hidden="true" className="text-gray-300 dark:text-gray-600">
+            ·
+          </span>
+          <span>Keyword tips</span>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+
+        {/* Call-to-action. The form submits a server action that starts the
+            Google sign-in flow; SubmitButton shows a pending state. */}
+        <form
+          action={async () => {
+            "use server";
+            await signIn("google");
+          }}
+          className="animate-fade-in-up mt-8"
+          style={{ animationDelay: "280ms" }}
+        >
+          <SubmitButton
+            pendingText="Signing in…"
+            className="rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+            Sign in with Google
+          </SubmitButton>
+        </form>
       </main>
-    </div>
-  );
+    );
+  }
+
+  return <CoachForm />;
 }

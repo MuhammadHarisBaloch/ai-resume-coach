@@ -22,5 +22,31 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* Use the Geist font loaded in app/layout.tsx (falls back to system fonts). */
+  font-family: var(--font-sans), system-ui, -apple-system, Arial, sans-serif;
+}
+
+/* Subtle entrance animation: fade in while sliding up a little.
+   `both` fill-mode keeps elements hidden before their (staggered) delay,
+   so they don't flash in first. */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.6s ease-out both;
+}
+
+/* Accessibility: respect users who ask for reduced motion — no animation. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in-up {
+    animation: none;
+  }
 }
