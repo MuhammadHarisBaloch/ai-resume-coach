@@ -9,7 +9,11 @@
 // browser. That is why we can safely read the secret API key here, AND why we
 // do PDF text-extraction here (pdf-parse is a Node library the browser can't run).
 
-import { PDFParse } from "pdf-parse";
+// NOTE: pdf-parse is intentionally NOT imported here at the top. Importing it
+// at module scope runs its pdfjs/native (@napi-rs/canvas) initialization when
+// the serverless function cold-starts — which threw "TypeError: Invalid URL"
+// and crashed the whole route BEFORE any handler/try-catch could run. We now
+// load it lazily inside the handler, only when a PDF is actually uploaded.
 import { Suggestions } from "@/app/types";
 import { prisma } from "@/app/lib/prisma";
 import { auth } from "@/auth";
@@ -100,6 +104,11 @@ export async function POST(req: Request) {
     }
 
     try {
+      // Lazy-load pdf-parse ONLY now that we actually have a PDF. This keeps its
+      // heavy pdfjs/native init out of module load (the prod crash), and any
+      // failure to load is caught by this try/catch as a clean JSON error.
+      const { PDFParse } = await import("pdf-parse");
+
       // Turn the uploaded file into a Buffer of raw bytes, hand it to
       // pdf-parse, and read back the extracted text.
       const buffer = Buffer.from(await file.arrayBuffer());
