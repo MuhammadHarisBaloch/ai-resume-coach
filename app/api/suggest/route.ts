@@ -6,20 +6,17 @@
 //     POST /api/suggest
 //
 // IMPORTANT: this code runs ONLY on the server. It is never sent to the
-// browser. That is why we can safely read the secret API key here, AND why we
-// do PDF text-extraction here (pdf-parse is a Node library the browser can't run).
-
-// NOTE: pdf-parse is intentionally NOT imported here at the top. Importing it
-// at module scope runs its pdfjs/native (@napi-rs/canvas) initialization when
-// the serverless function cold-starts — which threw "TypeError: Invalid URL"
-// and crashed the whole route BEFORE any handler/try-catch could run. We now
-// load it lazily inside the handler, only when a PDF is actually uploaded.
+// browser — that's why we can safely read the secret API key here.
+//
+// PDF text-extraction uses `unpdf`, a serverless-friendly library with NO
+// native dependencies. It's lazy-loaded inside the handler (only when a PDF is
+// actually uploaded), so nothing heavy runs at module load.
 import { Suggestions } from "@/app/types";
 import { prisma } from "@/app/lib/prisma";
 import { auth } from "@/auth";
 
-// pdf-parse needs the full Node.js runtime (it uses Node APIs + a native
-// module), so we explicitly opt out of the lighter "edge" runtime.
+// We use the full Node.js runtime (not edge) because we save to the database
+// with Prisma in this route.
 export const runtime = "nodejs";
 
 // The Gemini REST endpoint for the model we're using.
@@ -83,7 +80,7 @@ export async function POST(req: Request) {
 
   // --- 2. If a PDF was uploaded, extract its text HERE on the server ---
   // An LLM only reads text, so we must turn the PDF's bytes into plain text
-  // BEFORE sending it to Gemini. pdf-parse does that extraction.
+  // BEFORE sending it to Gemini. unpdf does that extraction.
   let extracted = "";
   if (file instanceof File && file.size > 0) {
     // Guard: only accept PDFs, and cap the size.
@@ -104,22 +101,22 @@ export async function POST(req: Request) {
     }
 
     try {
-      // Lazy-load pdf-parse ONLY now that we actually have a PDF. This keeps its
-      // heavy pdfjs/native init out of module load (the prod crash), and any
-      // failure to load is caught by this try/catch as a clean JSON error.
-      const { PDFParse } = await import("pdf-parse");
+      // Lazy-load unpdf ONLY now that we actually have a PDF. unpdf is a
+      // pure-JavaScript PDF text extractor with NO native dependencies, so it
+      // runs on Linux serverless runtimes (unlike pdf-parse, which needed a
+      // native @napi-rs/canvas binary that isn't available there). Loading it
+      // here also keeps it out of module load.
+      const { extractText } = await import("unpdf");
 
-      // Turn the uploaded file into a Buffer of raw bytes, hand it to
-      // pdf-parse, and read back the extracted text.
-      const buffer = Buffer.from(await file.arrayBuffer());
-      const parser = new PDFParse({ data: buffer });
-      const result = await parser.getText();
-      await parser.destroy(); // release the parser's resources
-      extracted = result.text.trim();
+      // unpdf takes the raw PDF bytes as a Uint8Array. mergePages:true joins all
+      // pages into a single text string.
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const { text } = await extractText(bytes, { mergePages: true });
+      extracted = text.trim();
     } catch (err) {
       // A corrupt/unreadable PDF must NOT crash the route. Log the real
       // reason server-side and return a friendly message to the user.
-      console.error("PDF parse failed", err);
+      console.error("PDF extraction failed", err);
       return Response.json({ error: FRIENDLY_PDF_ERROR }, { status: 422 });
     }
 
