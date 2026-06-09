@@ -6,7 +6,7 @@
 // that decides whether to show this form (only when signed in).
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { Suggestions } from "@/app/types";
 import Spinner from "@/app/components/spinner";
@@ -18,6 +18,19 @@ export default function CoachForm() {
   const [file, setFile] = useState<File | null>(null); // an uploaded PDF, if any
   const [loading, setLoading] = useState(false); // is a request in flight?
   const [error, setError] = useState(""); // a message to show on failure
+
+  // A ref to the actual <input type="file"> DOM element. React state alone
+  // can't fully clear a file input — the native element keeps the chosen
+  // filename and won't re-fire onChange if you pick the SAME file again. So to
+  // truly reset it we also blank the element's `.value` via this ref.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Clear the selected file: reset both React state AND the native input, so
+  // the user can switch to pasting text, or choose a file again afterwards.
+  function handleRemoveFile() {
+    setFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
   const [results, setResults] = useState<Suggestions | null>(null); // AI output
 
   // --- Called when the user clicks "Get Suggestions" ---
@@ -104,6 +117,7 @@ export default function CoachForm() {
             </label>
             <input
               id="file"
+              ref={fileInputRef}
               type="file"
               accept="application/pdf,.pdf"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
@@ -111,8 +125,17 @@ export default function CoachForm() {
               className="block w-full cursor-pointer text-sm text-gray-500 file:mr-4 file:cursor-pointer file:rounded-lg file:border file:border-gray-300 file:bg-gray-100 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-gray-700 file:transition-colors hover:file:bg-gray-200 disabled:opacity-60 dark:text-gray-400 dark:file:border-gray-700 dark:file:bg-gray-800 dark:file:text-gray-200 dark:hover:file:bg-gray-700"
             />
             {file && (
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Selected: {file.name}
+              <p className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                <span className="truncate">Selected: {file.name}</span>
+                <button
+                  type="button"
+                  onClick={handleRemoveFile}
+                  disabled={loading}
+                  aria-label="Remove selected file"
+                  className="shrink-0 rounded px-1.5 py-0.5 font-medium text-red-600 hover:bg-red-50 disabled:opacity-60 dark:text-red-400 dark:hover:bg-red-950"
+                >
+                  ✕ Remove
+                </button>
               </p>
             )}
           </div>

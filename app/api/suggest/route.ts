@@ -38,19 +38,6 @@ export async function POST(req: Request) {
   // logged readably (message + stack) in Vercel's function logs, instead of
   // surfacing only as "FUNCTION_INVOCATION_FAILED". (TEMP debugging aid.)
   try {
-    // --- TEMP DIAGNOSTICS: confirm env vars reached the function in prod ---
-    // We log only presence + length for secrets (never the value). AUTH_URL is
-    // your PUBLIC site URL (not a secret), so we log it fully — a malformed
-    // AUTH_URL (e.g. missing "https://") makes Auth.js throw "Invalid URL".
-    console.log("[/api/suggest] env check:", {
-      GEMINI_API_KEY: process.env.GEMINI_API_KEY
-        ? `present (length ${process.env.GEMINI_API_KEY.length})`
-        : "MISSING",
-      AUTH_URL: process.env.AUTH_URL ?? "MISSING",
-      AUTH_SECRET: process.env.AUTH_SECRET ? "present" : "MISSING",
-      DATABASE_URL: process.env.DATABASE_URL ? "present" : "MISSING",
-    });
-
     // --- 0. Require a logged-in user (BACKEND enforcement) ---
     // auth() reads the session cookie and looks up the session in the database.
     // NOTE: auth() also builds URLs from AUTH_URL — if AUTH_URL is malformed,
@@ -253,18 +240,14 @@ Use strong action verbs and quantify impact where possible. Provide 4-6 bullets 
   // 200 OK with the parsed JSON. The browser's fetch() will receive this.
     return Response.json(result);
   } catch (err) {
-    // CATCH-ALL: any unexpected throw lands here — e.g. auth() "Invalid URL"
-    // from a bad AUTH_URL, a DB/connection failure, or a native-module crash.
-    // We log the FULL message + stack so it's readable in Vercel's logs, and
-    // (temporarily) return the message to the client to speed up debugging.
+    // CATCH-ALL: any unexpected throw lands here. We log the full message +
+    // stack SERVER-SIDE (safe — only we see the logs), but return a GENERIC
+    // message to the client. We never leak internal error details to the browser.
     const e = err as Error;
     console.error("[/api/suggest] UNHANDLED ERROR:", e?.name, "-", e?.message);
     console.error("[/api/suggest] STACK:", e?.stack);
     return Response.json(
-      {
-        error: "Server error — check the function logs.",
-        detail: e?.message ?? String(err), // TEMP: remove after debugging
-      },
+      { error: "Something went wrong. Please try again." },
       { status: 500 }
     );
   }
